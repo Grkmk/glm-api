@@ -7,14 +7,16 @@ import (
 	"net/http"
 
 	"github.com/grkmk/glm-api/data"
+	protos "github.com/grkmk/glm-currency/protos/currency"
 )
 
 type Products struct {
-	l *log.Logger
+	l  *log.Logger
+	cc protos.CurrencyClient
 }
 
-func NewProducts(l *log.Logger) *Products {
-	return &Products{l}
+func NewProducts(l *log.Logger, cc protos.CurrencyClient) *Products {
+	return &Products{l, cc}
 }
 
 type KeyProduct struct{}

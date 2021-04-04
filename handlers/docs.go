@@ -16,6 +16,8 @@ package handlers
 
 import "github.com/grkmk/glm-api/data"
 
+//lint:file-ignore U1000 Ignore all unused code, it's for swagger generation
+
 //
 // NOTE: Types defined here are purely for documentation purposes
 // these types are not used by any of the handlers

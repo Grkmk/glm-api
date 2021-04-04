@@ -6,20 +6,32 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/go-openapi/runtime/middleware"
 	goHandlers "github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/grkmk/glm-api/handlers"
+	protos "github.com/grkmk/glm-currency/protos/currency"
+	"google.golang.org/grpc"
 )
 
 func main() {
 	// create logger
 	logger := log.New(os.Stdout, "[product-api]: ", log.LstdFlags)
 
+	conn, err := grpc.Dial("localhost:9092", grpc.WithInsecure()) // insecure option should not be used in prod
+	if err != nil {
+		panic(err) // TODO: cleanup
+	}
+	defer conn.Close()
+
+	// create client
+	currencyClient := protos.NewCurrencyClient(conn)
+
 	// create handlers
-	productsHandler := handlers.NewProducts(logger)
+	productsHandler := handlers.NewProducts(logger, currencyClient)
 
 	// create serve mux & register handlers
 
@@ -72,15 +84,16 @@ func main() {
 	}()
 
 	// trap sigterm or interrupt & gracefully shutdown server
-	signalChannel := make(chan os.Signal)
+	signalChannel := make(chan os.Signal, 1)
 	signal.Notify(signalChannel, os.Interrupt)
-	signal.Notify(signalChannel, os.Kill)
+	signal.Notify(signalChannel, syscall.SIGTERM)
 
 	sig := <-signalChannel
 	logger.Println("Received terminate, gracefully shutting down", sig)
 
-	timeoutContext, _ := context.WithTimeout(context.Background(), 30*time.Second)
+	timeoutContext, cancelTimeout := context.WithTimeout(context.Background(), 30*time.Second)
 	httpServer.Shutdown(timeoutContext)
+	defer cancelTimeout()
 
 	http.ListenAndServe(":9090", serveMux) // creates a web server
 }

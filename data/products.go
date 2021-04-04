@@ -1,13 +1,14 @@
 package data
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"regexp"
 	"time"
 
-	"github.com/go-playground/validator/v10"
+	protos "github.com/grkmk/glm-currency/protos/currency"
+	"github.com/hashicorp/go-hclog"
 )
 
 // Product defines the sturcture for an API product
@@ -20,7 +21,7 @@ type Product struct {
 	ID          int     `json:"id"`
 	Name        string  `json:"name" validate:"required"`
 	Description string  `json:"description"`
-	Price       float32 `json:"price" validate:"gt=0"`
+	Price       float64 `json:"price" validate:"gt=0"`
 	SKU         string  `json:"sku" validate:"required,sku"`
 	CreatedOn   string  `json:"-"`
 	UpdatedOn   string  `json:"-"`
@@ -32,28 +33,16 @@ func (p *Product) FromJSON(r io.Reader) error {
 	return e.Decode(p)
 }
 
-func (p *Product) Validate() error {
-	validate := validator.New()
-	validate.RegisterValidation("sku", validateSKU)
-	return validate.Struct(p)
-}
-
-func validateSKU(fl validator.FieldLevel) bool {
-	re := regexp.MustCompile(`[a-z]+-[a-z]+-[a-z]+`)
-	matches := re.FindAllString(fl.Field().String(), -1)
-
-	if len(matches) != 1 {
-		return false
-	}
-
-	if fl.Field().String() == "invalid" {
-		return false
-	}
-
-	return true
-}
-
 type Products []*Product
+
+type ProductsDB struct {
+	currency protos.CurrencyClient
+	log      hclog.Logger
+}
+
+func NewProductsDB(c protos.CurrencyClient, l hclog.Logger) *ProductsDB {
+	return &ProductsDB{c, l}
+}
 
 func (p *Products) ToJSON(w io.Writer) error {
 	e := json.NewEncoder(w)
@@ -65,18 +54,48 @@ func (p *Product) ToJSON(w io.Writer) error {
 	return e.Encode(p)
 }
 
-func GetProducts() Products {
-	return productList
+func (p *ProductsDB) GetProducts(currency string) (Products, error) {
+	if currency == "" {
+		return productList, nil
+	}
+
+	rate, err := p.getRate(currency)
+	if err != nil {
+		p.log.Error("Unable to get rate", "currency", currency, "error", err)
+		return nil, err
+	}
+
+	pr := Products{}
+	for _, p := range productList {
+		np := *p
+		np.Price = np.Price * rate
+		pr = append(pr, &np)
+	}
+
+	return pr, nil
 }
 
-func GetProduct(id int) (*Product, error) {
+func (p *ProductsDB) GetProduct(id int, currency string) (*Product, error) {
 	product, _, err := findProduct(id)
 
 	if err != nil {
 		return nil, ErrProductNotFound
 	}
 
-	return product, nil
+	if currency == "" {
+		return product, nil
+	}
+
+	rate, err := p.getRate(currency)
+	if err != nil {
+		p.log.Error("Unable to get rate", "currency", currency, "error", err)
+		return nil, err
+	}
+
+	np := *product
+	np.Price = np.Price * rate
+
+	return &np, nil
 }
 
 func AddProduct(p *Product) {
@@ -125,7 +144,7 @@ func getNextId() int {
 }
 
 var productList = []*Product{
-	&Product{
+	{
 		ID:          1,
 		Name:        "Latte",
 		Description: "Espresso with milk",
@@ -134,7 +153,7 @@ var productList = []*Product{
 		CreatedOn:   time.Now().UTC().String(),
 		UpdatedOn:   time.Now().UTC().String(),
 	},
-	&Product{
+	{
 		ID:          2,
 		Name:        "Espresso",
 		Description: "Short without milk",
@@ -143,4 +162,15 @@ var productList = []*Product{
 		CreatedOn:   time.Now().UTC().String(),
 		UpdatedOn:   time.Now().UTC().String(),
 	},
+}
+
+func (p *ProductsDB) getRate(destination string) (float64, error) {
+	rr := &protos.RateRequest{
+		Base:        protos.Currencies(protos.Currencies_value["EUR"]),
+		Destination: protos.Currencies(protos.Currencies_value[destination]),
+	}
+
+	resp, err := p.currency.GetRate(context.Background(), rr)
+
+	return resp.Rate, err
 }
