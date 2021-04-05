@@ -58,6 +58,14 @@ type errorResponseWrapper struct {
 type productsNoContent struct {
 }
 
+// swagger:parameters listProducts listProduct
+type productQueryParameterWrapper struct {
+	// The currency used when returning the price of the product
+	// in: query
+	// required: false
+	Currency string
+}
+
 // swagger:parameters deleteProduct
 type productIDParameterWrapper struct {
 	// The id of the product to delete from the data store

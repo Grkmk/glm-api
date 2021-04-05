@@ -5,7 +5,7 @@ definitions:
   GenericError:
     description: GenericError generic error
     type: object
-    x-go-package: github.com/grkmk/glm/models
+    x-go-package: github.com/grkmk/glm-api/models
   Product:
     description: Product Product defines the sturcture for an API product
     properties:
@@ -35,11 +35,11 @@ definitions:
     required:
     - id
     type: object
-    x-go-package: github.com/grkmk/glm/models
+    x-go-package: github.com/grkmk/glm-api/models
   ValidationError:
     description: ValidationError validation error
     type: object
-    x-go-package: github.com/grkmk/glm/models
+    x-go-package: github.com/grkmk/glm-api/models
 info:
   description: Documentation for Product API
   title: Product API.
@@ -49,6 +49,11 @@ paths:
     get:
       description: Returns a list of products
       operationId: listProducts
+      parameters:
+      - description: The currency used when returning the price of the product
+        in: query
+        name: Currency
+        type: string
       responses:
         "200":
           $ref: '#/responses/productsResponse'
@@ -86,6 +91,11 @@ paths:
     get:
       description: Returns a product
       operationId: listProduct
+      parameters:
+      - description: The currency used when returning the price of the product
+        in: query
+        name: Currency
+        type: string
       responses:
         "200":
           $ref: '#/responses/productResponse'

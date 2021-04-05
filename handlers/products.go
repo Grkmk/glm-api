@@ -3,20 +3,19 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 
 	"github.com/grkmk/glm-api/data"
-	protos "github.com/grkmk/glm-currency/protos/currency"
+	"github.com/hashicorp/go-hclog"
 )
 
 type Products struct {
-	l  *log.Logger
-	cc protos.CurrencyClient
+	l         hclog.Logger
+	productDB *data.ProductsDB
 }
 
-func NewProducts(l *log.Logger, cc protos.CurrencyClient) *Products {
-	return &Products{l, cc}
+func NewProducts(l hclog.Logger, productionDB *data.ProductsDB) *Products {
+	return &Products{l, productionDB}
 }
 
 type KeyProduct struct{}

@@ -1,13 +1,10 @@
 package handlers
 
 import (
-	"context"
 	"net/http"
 	"strconv"
 
 	"github.com/gorilla/mux"
-	"github.com/grkmk/glm-api/data"
-	protos "github.com/grkmk/glm-currency/protos/currency"
 )
 
 // swagger:route GET /products products listProducts
@@ -17,11 +14,18 @@ import (
 
 // GetProducts returns the products from the data store
 func (p *Products) GetProducts(responseWriter http.ResponseWriter, request *http.Request) {
-	// fetch the procust from the data store
-	listOfProducts := data.GetProducts()
+	p.l.Debug("Get all records")
+	responseWriter.Header().Add("Content-type", "application/json")
+
+	cur := request.URL.Query().Get("currency")
+
+	listOfProducts, err := p.productDB.GetProducts(cur)
+	if err != nil {
+		http.Error(responseWriter, "Unable to get products", http.StatusInternalServerError)
+	}
 
 	// serialize the list to JSON
-	err := listOfProducts.ToJSON(responseWriter)
+	err = listOfProducts.ToJSON(responseWriter)
 	if err != nil {
 		http.Error(responseWriter, "Unable to marshal json", http.StatusInternalServerError)
 	}
@@ -41,25 +45,16 @@ func (p *Products) GetProduct(responseWriter http.ResponseWriter, request *http.
 		return
 	}
 
-	product, err := data.GetProduct(id)
+	cur := request.URL.Query().Get("currency")
+
+	p.l.Debug("Get record", "id", id)
+	responseWriter.Header().Add("Content-type", "application/json")
+
+	product, err := p.productDB.GetProduct(id, cur)
 	if err != nil {
 		http.Error(responseWriter, "Unable to find product for id", http.StatusBadRequest)
 		return
 	}
-
-	// get exchange rate
-	rateRequest := &protos.RateRequest{
-		Base:        protos.Currencies(protos.Currencies_value["EUR"]),
-		Destination: protos.Currencies(protos.Currencies_value["GBP"]),
-	}
-	rateResponse, err := p.cc.GetRate(context.Background(), rateRequest)
-	if err != nil {
-		p.l.Println("[Error] error getting new rate", err)
-		http.Error(responseWriter, "Unable to get rate", http.StatusInternalServerError)
-		return
-	}
-
-	product.Price = product.Price * rateResponse.Rate
 
 	err = product.ToJSON(responseWriter)
 	if err != nil {
