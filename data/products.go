@@ -9,6 +9,8 @@ import (
 
 	protos "github.com/grkmk/glm-currency/protos/currency"
 	"github.com/hashicorp/go-hclog"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Product defines the sturcture for an API product
@@ -61,14 +63,22 @@ func (p *ProductsDB) handleUpdates() {
 
 	for {
 		rr, err := sub.Recv()
-		p.log.Info("Received updated rate from server", "dest", rr.GetDestination().String())
 
-		if err != nil {
-			p.log.Error("Error reveiving message", "error", err)
-			return
+		if grpcError := rr.GetError(); grpcError != nil {
+			p.log.Error("Error subscribing for rates", "error", grpcError)
+			continue
 		}
 
-		p.rates[rr.Destination.String()] = rr.Rate
+		if resp := rr.GetRateResponse(); resp != nil {
+			p.log.Info("Received updated rate from server", "dest", resp.GetDestination().String())
+
+			if err != nil {
+				p.log.Error("Error reveiving message", "error", err)
+				return
+			}
+
+			p.rates[resp.Destination.String()] = resp.Rate
+		}
 	}
 }
 
@@ -203,6 +213,28 @@ func (p *ProductsDB) getRate(destination string) (float64, error) {
 	}
 
 	resp, err := p.currency.GetRate(context.Background(), rr)
+	if err != nil {
+		if s, ok := status.FromError(err); ok {
+			md := s.Details()[0].(*protos.RateRequest)
+
+			if s.Code() == codes.InvalidArgument {
+				return -1, fmt.Errorf(
+					"unable to get rate from currency server, destination and base cannot be the same, base: %s, dest: %s",
+					md.Base.String(),
+					md.Destination.String(),
+				)
+			}
+
+			return -1, fmt.Errorf(
+				"unable to get rate from currency server, base: %s, dest: %s",
+				md.Base.String(),
+				md.Destination.String(),
+			)
+		}
+
+		return -1, err
+	}
+
 	p.rates[destination] = resp.Rate
 
 	p.client.Send(rr)
